@@ -1,0 +1,29 @@
+:root {
+  --paper: #F4F1EA;
+  --paper-deep: #ECE6D8;
+  --paper-15: rgba(244, 241, 234, 0.15);
+  --ink: #11161E;
+  --navy: #0A1F44;
+  --navy-deep: #061536;
+  --red: #B0272D;
+  --red-tint: #F6E6E5;
+  --amber: #E8C547;
+  --amber-ink: #8A6D0E;
+  --rule: #C9C2B1;
+  --muted: #6F6A5E;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); }
+body { font-family: 'Inter Tight', system-ui, sans-serif; }
+button { font-family: inherit; }
+::selection { background: var(--navy); color: var(--paper); }
+
+@keyframes tickerScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-33.333%); }
+}
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--paper-deep); }
+::-webkit-scrollbar-thumb { background: var(--navy); border: 3px solid var(--paper-deep); }
