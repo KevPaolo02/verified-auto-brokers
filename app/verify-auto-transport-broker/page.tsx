@@ -276,6 +276,43 @@ export default function VerifyPage() {
             ⚠ Get-quote button routes to {VAB_BROKER.legal_name} — operated by Verified Auto Brokers · Disclosed per FTC 16 CFR Part 255
           </div>
         </section>
+
+        {/* ── SECTION 5: Cluster pages — internal linking depth ─────────── */}
+        <section style={{ marginTop: 56 }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+            letterSpacing: "0.18em", textTransform: "uppercase",
+            color: "var(--ink)", marginBottom: 14,
+          }}>§ Read More</div>
+          <h2 style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontSize: "clamp(28px, 3.5vw, 40px)", lineHeight: 1.1,
+            margin: "0 0 22px", letterSpacing: "-0.015em", fontWeight: 400,
+          }}>
+            Going deeper.
+          </h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+            {[
+              { href: "/car-shipping-scams", h: "7 car shipping scams", p: "The exact tactics that catch shippers — and how to spot each one before you book." },
+              { href: "/how-to-check-auto-transport-broker", h: "How to check a broker", p: "Expanded walkthrough of the 4 FMCSA checks. Snippet-friendly format." },
+              { href: "/broker-vs-carrier", h: "Broker vs carrier", p: "What the difference means for your money, your insurance, and your recourse." },
+              { href: "/what-is-mc-number", h: "What is an MC number?", p: "The federal license every legitimate broker has. How to look one up + spot a fake." },
+            ].map((c) => (
+              <Link key={c.href} href={c.href} style={{
+                display: "block", padding: "20px 22px",
+                border: "1px solid var(--rule)", background: "var(--paper)",
+                textDecoration: "none", color: "var(--ink)",
+              }}>
+                <div style={{ fontFamily: "'Inter Tight'", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+                  {c.h} →
+                </div>
+                <div style={{ fontFamily: "'Inter Tight'", fontSize: 14, lineHeight: 1.5, color: "var(--muted)" }}>
+                  {c.p}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </main>
 
       {/* Footer with broker disclosure */}
