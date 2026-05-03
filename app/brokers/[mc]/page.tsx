@@ -269,35 +269,36 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             }}>
               {legitVerdict === "yes-active" && (
                 <>
-                  <strong>Short answer: Yes — based on FMCSA public records.</strong>{" "}
-                  {display.name} (MC-{mc}, DOT-{row.dot}) currently holds <strong>active broker authority</strong> with the FMCSA, has a <strong>${display.bond.amount?.toLocaleString() || "75,000"} BMC-84 surety bond on file</strong>{display.bond.provider ? ` with ${display.bond.provider}` : ""}, and operates as a licensed property broker — not a motor carrier.
+                  <strong>Short answer: Yes — this broker is registered with FMCSA and has an active ${(display.bond.amount || 75000).toLocaleString()} BMC-84 surety bond</strong>, which is required by federal law (49 CFR 387.307) to operate legally in interstate auto transport.{" "}
+                  {display.name} (MC-{mc}, DOT-{row.dot}) operates as a licensed property broker — they arrange shipments through FMCSA-authorized carriers and do not own trucks themselves.
+                  {display.bond.provider && <> The bond is on file with <strong>{display.bond.provider}</strong>.</>}
                 </>
               )}
               {legitVerdict === "partial-no-bond" && (
                 <>
-                  <strong>Caution.</strong> {display.name} (MC-{mc}) has active broker authority but the FMCSA public record shows <strong>no surety bond on file right now</strong>. A $75,000 BMC-84 bond is required by federal law for property brokers (49 CFR 387.307). Verify the bond directly on FMCSA SAFER before booking.
+                  <strong>Caution.</strong> {display.name} (MC-{mc}) has active broker authority but the FMCSA public record shows <strong>no surety bond on file right now</strong>. A $75,000 BMC-84 bond is required by federal law for property brokers (49 CFR 387.307) — operating without one is a violation. Verify the bond directly on FMCSA SAFER below before booking, and consider <Link href="/verify-auto-transport-broker" style={{color:"var(--navy)", borderBottom:"1px dotted var(--navy)", textDecoration:"none"}}>checking another broker instead</Link>.
                 </>
               )}
               {legitVerdict === "no-inactive" && (
                 <>
-                  <strong>Do not use.</strong> {display.name} (MC-{mc}) does <strong>not currently hold active FMCSA broker authority</strong>. Status: {display.auth_status}. They are not legally permitted to broker auto-transport shipments.
+                  <strong>Do not use.</strong> {display.name} (MC-{mc}) does <strong>not currently hold active FMCSA broker authority</strong>. Status: {display.auth_status}. They are not legally permitted to broker auto-transport shipments. <Link href="/verify-auto-transport-broker" style={{color:"var(--navy)", borderBottom:"1px dotted var(--navy)", textDecoration:"none"}}>Verify a different broker here</Link>.
                 </>
               )}
               {legitVerdict === "unknown" && (
                 <>
-                  We couldn&apos;t fully verify {display.name} (MC-{mc}) against the FMCSA public record at the moment. Check directly on FMCSA SAFER below.
+                  We couldn&apos;t fully verify {display.name} (MC-{mc}) against the FMCSA public record at the moment. <Link href="/verify-auto-transport-broker" style={{color:"var(--navy)", borderBottom:"1px dotted var(--navy)", textDecoration:"none"}}>Try our verify tool</Link> or check directly on FMCSA SAFER below.
                 </>
               )}
             </p>
 
             <ul style={{ fontFamily: "'Inter Tight'", fontSize: 14.5, lineHeight: 1.7, paddingLeft: 22, margin: 0, color: "var(--ink)" }}>
               <li><strong>FMCSA broker authority:</strong> {display.auth_status === "ACTIVE" ? "Active" : display.auth_status}</li>
-              <li><strong>Bond on file:</strong> {bondActive ? `Yes — $${(display.bond.amount || 75000).toLocaleString()} BMC-84${display.bond.provider ? ` via ${display.bond.provider}` : ""}` : "No"}</li>
-              <li><strong>Broker vs carrier:</strong> Property broker (arranges transport via FMCSA-authorized carriers — does not operate trucks)</li>
+              <li><strong>Bond on file:</strong> {bondActive ? `Yes — $${(display.bond.amount || 75000).toLocaleString()} BMC-84${display.bond.provider ? ` via ${display.bond.provider}` : ""} (federal minimum: $75,000)` : "No (federal minimum: $75,000)"}</li>
+              <li><strong>Broker vs carrier:</strong> Property broker — arranges transport through FMCSA-authorized carriers, does not operate trucks</li>
               <li><strong>HQ on FMCSA record:</strong> {[display.city, display.state].filter(Boolean).join(", ") || "—"}</li>
             </ul>
 
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 14, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
               <a
                 href="https://safer.fmcsa.dot.gov/CompanySnapshot.aspx"
                 target="_blank" rel="noopener noreferrer"
@@ -308,6 +309,15 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
                   textDecoration: "none",
                 }}
               >Verify independently on FMCSA SAFER ↗</a>
+              <Link
+                href="/verify-auto-transport-broker"
+                style={{
+                  fontFamily: "'JetBrains Mono'", fontSize: 11,
+                  letterSpacing: "0.14em", textTransform: "uppercase",
+                  color: "var(--navy)", borderBottom: "1px dotted var(--navy)",
+                  textDecoration: "none",
+                }}
+              >Verify any broker instantly →</Link>
             </div>
           </div>
         </section>
@@ -470,11 +480,21 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
           }}>
             Not sure about this broker?
           </h2>
-          <p style={{ fontFamily: "'Inter Tight'", fontSize: 16, lineHeight: 1.55, color: "var(--ink)", maxWidth: 540, margin: "0 auto 22px" }}>
+          <p style={{
+            fontFamily: "'Inter Tight'", fontSize: 16, lineHeight: 1.55,
+            color: "var(--ink)", maxWidth: 540, margin: "0 auto 14px",
+          }}>
             Check another company instantly, or get a verified quote from a broker we operate ourselves.
           </p>
+          <p style={{
+            fontFamily: "'Inter Tight'", fontStyle: "italic",
+            fontSize: 14.5, lineHeight: 1.5,
+            color: "var(--muted)", maxWidth: 540, margin: "0 auto 22px",
+          }}>
+            Most issues in car shipping happen when brokers aren&apos;t verified up front. Take 30 seconds to check yours.
+          </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/" style={{
+            <Link href="/verify-auto-transport-broker" style={{
               background: "var(--ink)", color: "var(--paper)",
               padding: "14px 22px", fontFamily: "'Inter Tight'", fontSize: 14,
               fontWeight: 600, textDecoration: "none",
