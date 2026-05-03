@@ -6,6 +6,8 @@ import VerifyTool from "@/components/verify-tool";
 import { buildMetadata } from "@/lib/seo";
 import { BROKER as VAB_BROKER } from "@/lib/broker-info";
 import { buildBrokerSlug } from "@/lib/notable-brokers";
+import { JsonLd, howToSchema, breadcrumbSchema } from "@/lib/schema";
+import { SITE_URL } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "How to Check if an Auto Transport Broker is Legit (4 Steps, 30 Seconds)",
@@ -20,9 +22,43 @@ const gmfSlug = buildBrokerSlug({
   dba_name: VAB_BROKER.dba_name,
 });
 
+// Schema MUST match the visible 4-step list above the fold.
+const HOW_TO_STEPS = [
+  {
+    name: "Look up their FMCSA registration",
+    text: "Get the broker's MC number and confirm it's a real, active FMCSA license. Search FMCSA SAFER or our verify tool.",
+  },
+  {
+    name: "Confirm broker authority is ACTIVE",
+    text: "FMCSA marks every broker's authority as Active, Inactive, Pending, Revoked, or Suspended. Only Active is safe to book.",
+  },
+  {
+    name: "Check the BMC-84 bond is on file",
+    text: "Federal law (49 CFR 387.307) requires every property broker to maintain a $75,000 surety bond. If the bond isn't on file, walk away.",
+  },
+  {
+    name: "Match the legal company name",
+    text: "Confirm the FMCSA-listed company name matches who's quoting you. A mismatch with an unrelated legal name is a fraud red flag.",
+  },
+];
+
 export default function HowToPage() {
   return (
     <div style={{ background: "var(--paper)", minHeight: "100vh" }}>
+      <JsonLd data={[
+        howToSchema({
+          name: "How to Check if an Auto Transport Broker is Legit",
+          description: "Four FMCSA checks every shipper should run before booking an auto transport broker.",
+          totalTimeISO: "PT60S",
+          steps: HOW_TO_STEPS,
+        }),
+        breadcrumbSchema({
+          items: [
+            { name: "Home", url: `${SITE_URL}/` },
+            { name: "How to Check an Auto Transport Broker", url: `${SITE_URL}/how-to-check-auto-transport-broker` },
+          ],
+        }),
+      ]} />
       <div style={{
         background: "var(--navy)", color: "var(--paper)",
         fontFamily: "'JetBrains Mono', monospace", fontSize: 10,

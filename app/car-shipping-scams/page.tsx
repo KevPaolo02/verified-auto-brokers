@@ -8,9 +8,10 @@
 
 import Link from "next/link";
 import VerifyTool from "@/components/verify-tool";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, SITE_URL } from "@/lib/seo";
 import { BROKER as VAB_BROKER } from "@/lib/broker-info";
 import { buildBrokerSlug } from "@/lib/notable-brokers";
+import { JsonLd, faqSchema, breadcrumbSchema } from "@/lib/schema";
 
 export const metadata = buildMetadata({
   title: "7 Car Shipping Scams You Must Avoid (2026 Guide) — Verified Auto Brokers",
@@ -180,9 +181,51 @@ const SCAMS = [
   },
 ];
 
+// Common questions visible on the page (rendered in the FAQ block below) and
+// also surfaced as FAQPage JSON-LD for Google rich results. Same text in both.
+const COMMON_QUESTIONS = [
+  {
+    q: "What is the most common car shipping scam?",
+    a: "The lowball quote — a broker quotes a price 30-50% under everyone else, you book, then the actual price doubles before pickup. The original quote was never real; they used it to win the booking knowing no carrier would accept it.",
+  },
+  {
+    q: "Are cheap car shipping quotes a scam?",
+    a: "Not always, but a quote that's 20%+ below the others is either bait (no carrier will run it for that price) or signals a broker who doesn't know the market. Both end badly. Real auto-transport rates cluster in a tight band — get 5+ quotes and pick from the middle three.",
+  },
+  {
+    q: "How do I verify an auto transport broker?",
+    a: "Look up the broker's MC number on FMCSA, confirm broker authority is Active, confirm a $75,000 BMC-84 surety bond is on file, and match the legal company name. Use our free verify tool to run all four checks at once.",
+  },
+  {
+    q: "What should I do if a broker takes my deposit and disappears?",
+    a: "If they have an active BMC-84 bond, you can file a bond claim against the surety company — that's exactly what the bond exists for. File a complaint with the FMCSA National Consumer Complaint Database (1-888-DOT-SAFT) and dispute the charge with your credit card company if you paid with a card.",
+  },
+  {
+    q: "What does it mean when a broker is 'double-brokering'?",
+    a: "Double-brokering is when Broker A takes your load and quietly re-sells it to a different, often unauthorized, carrier without telling you. The carrier that shows up at pickup isn't the one on your dispatch sheet, and the insurance you thought you had doesn't actually cover the load.",
+  },
+  {
+    q: "Can a carrier hold my car if I refuse to pay extra at delivery?",
+    a: "No — holding cargo for excess payment violates the carrier's federal authority and is reportable to the FMCSA. Get the final delivery price in writing on your dispatch sheet before pickup. If a driver demands more at delivery, photograph the truck, call the broker, and tell them you'll file an FMCSA complaint.",
+  },
+  {
+    q: "Are the MC numbers brokers display always real?",
+    a: "Most are, but identity-spoofing scams use a real broker's MC number on quotes and contracts to look legitimate. Independently call the company at the FMCSA-listed phone number (not the salesperson's) to confirm they have your quote on file.",
+  },
+];
+
 export default function ScamsPage() {
   return (
     <div style={{ background: "var(--paper)", minHeight: "100vh" }}>
+      <JsonLd data={[
+        faqSchema({ questions: COMMON_QUESTIONS }),
+        breadcrumbSchema({
+          items: [
+            { name: "Home", url: `${SITE_URL}/` },
+            { name: "Car Shipping Scams", url: `${SITE_URL}/car-shipping-scams` },
+          ],
+        }),
+      ]} />
       <div style={{
         background: "var(--navy)", color: "var(--paper)",
         fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
@@ -266,6 +309,37 @@ export default function ScamsPage() {
 
         {/* ── SCAMS 4–7 ─────────────────────────────────────────────────── */}
         {SCAMS.slice(3).map((s) => <Scam key={s.n} {...s} />)}
+
+        {/* ── COMMON QUESTIONS (FAQ) — visible content matches FAQPage schema ── */}
+        <section style={{ marginTop: 56 }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+            letterSpacing: "0.18em", textTransform: "uppercase",
+            color: "var(--ink)", marginBottom: 14,
+          }}>§ Common Questions</div>
+          <h2 style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontSize: "clamp(28px, 3.5vw, 40px)", lineHeight: 1.1,
+            margin: "0 0 18px", letterSpacing: "-0.015em", fontWeight: 400,
+          }}>
+            What people ask about car shipping scams.
+          </h2>
+          <div>
+            {COMMON_QUESTIONS.map((qa, i) => (
+              <details key={i} style={{
+                padding: "16px 18px", border: "1px solid var(--rule)", marginBottom: 10,
+                background: "var(--paper)",
+              }}>
+                <summary style={{ cursor: "pointer", fontFamily: "'Inter Tight'", fontSize: 16, fontWeight: 600 }}>
+                  {qa.q}
+                </summary>
+                <p style={{ fontFamily: "'Inter Tight'", fontSize: 14.5, lineHeight: 1.6, color: "var(--ink)", marginTop: 10, marginBottom: 0 }}>
+                  {qa.a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </section>
 
         {/* ── INTERNAL LINK CLUSTER ─────────────────────────────────────── */}
         <section style={{ marginTop: 56, padding: "24px 26px", border: "1px solid var(--rule)", background: "var(--paper-deep)" }}>

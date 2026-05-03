@@ -20,7 +20,7 @@ import { fetchActiveFilings } from "@/lib/fmcsa/socrata";
 import { normalizeFmcsaBroker } from "@/lib/fmcsa/normalize";
 import { sql, readClaim, readInternalFlags } from "@/lib/db";
 import { BROKER as VAB_BROKER } from "@/lib/broker-info";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, SITE_URL } from "@/lib/seo";
 import {
   buildBrokerSlug,
   canonicalNameForBroker,
@@ -28,6 +28,7 @@ import {
   getNotableName,
   isIndexable as isNotable,
 } from "@/lib/notable-brokers";
+import { JsonLd, faqSchema, breadcrumbSchema, localBusinessSchema } from "@/lib/schema";
 
 async function loadBroker(mc: string) {
   if (!sql) return null;
@@ -148,8 +149,50 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
     : !authActive ? "no-inactive"
     : "unknown";
 
+  // FAQ data — rendered visibly below AND emitted as FAQPage JSON-LD.
+  // Same text in both per the matching-content rule.
+  const faqQuestions = [
+    {
+      q: `${display.name} reviews`,
+      a: `We do not aggregate third-party reviews. ${display.name} (MC-${mc}) has ${authActive ? "active" : display.auth_status.toLowerCase()} FMCSA broker authority and ${bondActive ? "a current BMC-84 surety bond" : "no current bond"} on file. For real customer experiences, check independent review sites like the BBB, Google Reviews, or Transport Reviews — not paid review aggregators.`,
+    },
+    {
+      q: `${display.name} complaints`,
+      a: `Complaints filed with the FMCSA appear in their public Safety Measurement System (SMS) profile. We surface authority and bond status here; for the full complaint and inspection history, look up DOT-${row.dot} on FMCSA SAFER.`,
+    },
+    {
+      q: `Is ${display.name} legit?`,
+      a: legitVerdict === "yes-active"
+        ? `Yes — they are FMCSA-licensed and bonded. See the legitimacy summary above.`
+        : `${legitVerdict === "no-inactive" ? `No — their FMCSA broker authority is currently ${display.auth_status.toLowerCase()}.` : `Caution warranted — see the summary above for current FMCSA status.`}`,
+    },
+    {
+      q: `${display.name} MC number`,
+      a: `MC-${mc} (DOT-${row.dot}). ${display.legal_name && display.legal_name !== display.name ? `The legal entity on the FMCSA filing is ${display.legal_name}.` : ""}`,
+    },
+  ];
+
+  // Schema bundle: FAQ + breadcrumbs always; LocalBusiness only when this is
+  // the GMF (operator) page, since LocalBusiness should describe ONE entity.
+  const isGmfOperator = mc === VAB_BROKER.mc;
+  const schemas = [
+    faqSchema({ questions: faqQuestions }),
+    breadcrumbSchema({
+      items: [
+        { name: "Home", url: `${SITE_URL}/` },
+        { name: "Verify a Broker", url: `${SITE_URL}/verify-auto-transport-broker` },
+        { name: display.name, url: `${SITE_URL}/brokers/${canonicalSlug}` },
+      ],
+    }),
+    ...(isGmfOperator
+      ? [localBusinessSchema({ url: `${SITE_URL}/brokers/${canonicalSlug}` })]
+      : []),
+  ];
+
   return (
     <div style={{ background: "var(--paper)", minHeight: "100vh" }}>
+      <JsonLd data={schemas} />
+
       {/* Top disclosure bar — 49 CFR 371 compliance */}
       <div style={{
         background: "var(--navy)", color: "var(--paper)",
@@ -332,26 +375,7 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             What people search about {display.name}
           </h2>
           <div>
-            {[
-              {
-                q: `${display.name} reviews`,
-                a: `We do not aggregate third-party reviews. ${display.name} (MC-${mc}) has ${authActive ? "active" : display.auth_status.toLowerCase()} FMCSA broker authority and ${bondActive ? "a current BMC-84 surety bond" : "no current bond"} on file. For real customer experiences, check independent review sites like the BBB, Google Reviews, or Transport Reviews — not paid review aggregators.`,
-              },
-              {
-                q: `${display.name} complaints`,
-                a: `Complaints filed with the FMCSA appear in their public Safety Measurement System (SMS) profile. We surface authority and bond status here; for the full complaint and inspection history, look up DOT-${row.dot} on FMCSA SAFER.`,
-              },
-              {
-                q: `Is ${display.name} legit?`,
-                a: legitVerdict === "yes-active"
-                  ? `Yes — they are FMCSA-licensed and bonded. See the legitimacy summary above.`
-                  : `${legitVerdict === "no-inactive" ? `No — their FMCSA broker authority is currently ${display.auth_status.toLowerCase()}.` : `Caution warranted — see the summary above for current FMCSA status.`}`,
-              },
-              {
-                q: `${display.name} MC number`,
-                a: `MC-${mc} (DOT-${row.dot}). ${display.legal_name && display.legal_name !== display.name ? `The legal entity on the FMCSA filing is ${display.legal_name}.` : ""}`,
-              },
-            ].map((qa, i) => (
+            {faqQuestions.map((qa, i) => (
               <details key={i} style={{
                 padding: "16px 18px", border: "1px solid var(--rule)", marginBottom: 10,
                 background: "var(--paper)",

@@ -3,7 +3,8 @@
 
 import App from "@/components/app";
 import { getRegistryStats } from "@/lib/db";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, SITE_URL } from "@/lib/seo";
+import { JsonLd, organizationSchema, localBusinessSchema } from "@/lib/schema";
 
 export const metadata = buildMetadata({
   title: "Verified Auto Brokers — Look up any FMCSA-licensed auto broker",
@@ -23,5 +24,16 @@ export default async function Page() {
   } catch (err) {
     console.error("[home] getRegistryStats failed:", err);
   }
-  return <App initialStats={initialStats} />;
+  return (
+    <>
+      <JsonLd data={[
+        // Publisher entity for the registry as a whole.
+        organizationSchema(),
+        // GMF as the operator-affiliated entity (transparent disclosure already
+        // visible elsewhere on the site; LocalBusiness here surfaces it to crawlers).
+        localBusinessSchema(),
+      ]} />
+      <App initialStats={initialStats} />
+    </>
+  );
 }
