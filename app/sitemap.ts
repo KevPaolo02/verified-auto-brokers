@@ -30,6 +30,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/how-to-check-auto-transport-broker`, lastModified: now, changeFrequency: "monthly", priority: 0.85 },
     { url: `${SITE_URL}/broker-vs-carrier`,               lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/what-is-mc-number`,               lastModified: now, changeFrequency: "monthly", priority: 0.75 },
+    { url: `${SITE_URL}/report-a-broker`,                 lastModified: now, changeFrequency: "monthly", priority: 0.75 },
     { url: `${SITE_URL}/claim`,                           lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/privacy`,                         lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
     { url: `${SITE_URL}/terms`,                           lastModified: now, changeFrequency: "yearly",  priority: 0.3 },

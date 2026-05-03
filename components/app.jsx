@@ -89,7 +89,7 @@ const App = ({ initialStats = null }) => {
     else if (k === "alerts") { setView("alerts"); window.scrollTo({top:0}); }
     else if (k === "match") { setModal({kind: "match"}); }
     else if (k === "quote") { setModal({kind: "quote", broker: null}); }
-    else if (k === "report") { setModal({kind:"quote", broker: null}); }
+    else if (k === "report") { window.location.href = "/report-a-broker"; }
   };
 
   const onSearch = (p) => {
