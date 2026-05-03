@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getRoute, getRouteSlugs } from "@/lib/routes";
 import { BROKER } from "@/lib/broker-info";
+import { buildMetadata } from "@/lib/seo";
 import RouteFunnel from "@/components/route-funnel";
 
 export async function generateStaticParams() {
@@ -17,11 +18,12 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const route = getRoute(params.slug);
-  if (!route) return { title: "Route not found" };
-  return {
+  if (!route) return { title: "Route not found", robots: { index: false, follow: false } };
+  return buildMetadata({
     title: route.seo_title,
     description: route.seo_description,
-  };
+    path: `/routes/${params.slug}`,
+  });
 }
 
 export default function RoutePage({ params }: { params: { slug: string } }) {

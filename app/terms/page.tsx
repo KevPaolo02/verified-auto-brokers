@@ -3,11 +3,13 @@
 
 import Link from "next/link";
 import { BROKER } from "@/lib/broker-info";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = {
+export const metadata = buildMetadata({
   title: `Terms of Service — ${BROKER.legal_name}`,
   description: "Terms of service for the Verified Auto Brokers and GMF Auto Transport funnel sites.",
-};
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

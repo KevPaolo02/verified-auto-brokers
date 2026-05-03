@@ -4,11 +4,13 @@
 
 import Link from "next/link";
 import { BROKER } from "@/lib/broker-info";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = {
+export const metadata = buildMetadata({
   title: `Privacy Policy — ${BROKER.legal_name}`,
   description: "How we collect, use, and protect personal information.",
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

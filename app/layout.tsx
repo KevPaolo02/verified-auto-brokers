@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import { buildMetadata, SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
+// Default metadata applied to every page; individual pages override via their own
+// generateMetadata or `export const metadata`. metadataBase lets relative OG
+// image paths resolve to absolute URLs when crawlers fetch them.
 export const metadata: Metadata = {
-  title: "Verified Auto Brokers — The Independent Registry",
-  description:
-    "Independent registry of FMCSA-licensed auto-transport brokers. Search by name, MC#, or DOT#.",
+  metadataBase: new URL(SITE_URL),
+  ...buildMetadata({
+    title: "Verified Auto Brokers — The Independent Registry",
+    description:
+      "Independent registry of FMCSA-licensed auto-transport brokers. Look up any broker by name, MC#, or DOT#. 24,992 active brokers tracked.",
+    path: "/",
+  }),
 };
 
 export default function RootLayout({

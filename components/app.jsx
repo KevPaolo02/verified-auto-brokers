@@ -48,7 +48,7 @@ function rowToBroker(r) {
   };
 }
 
-const App = () => {
+const App = ({ initialStats = null }) => {
   const [tweaks, setTweak] = useTweaks(/*EDITMODE-BEGIN*/{
     "hero": "registry",
     "accentRed": "#B0272D",
@@ -63,7 +63,8 @@ const App = () => {
   const [modal, setModal] = useState(null);
   const [unlocked, setUnlocked] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
-  const [stats, setStats] = useState(null);
+  // Seed with server-rendered stats so first paint shows real numbers (not "—").
+  const [stats, setStats] = useState(initialStats);
 
   // apply CSS variables from tweaks
   useEffect(() => {
@@ -73,9 +74,10 @@ const App = () => {
     r.style.setProperty("--paper", tweaks.paper);
   }, [tweaks.navy, tweaks.accentRed, tweaks.paper]);
 
-  // Fetch real registry counts once on mount.
+  // Refresh stats client-side after hydration in case the SSR snapshot is stale
+  // (page revalidates every 5 min server-side; this catches faster claim updates).
   useEffect(() => {
-    BrokerService.getStats().then(setStats).catch(() => setStats(null));
+    BrokerService.getStats().then(setStats).catch(() => {/* keep SSR value */});
   }, []);
 
   const goHome = () => { setView("home"); setActiveBroker(null); window.scrollTo({top:0}); };
