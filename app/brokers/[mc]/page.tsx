@@ -1,35 +1,36 @@
-// Server-rendered per-broker page at /brokers/MC-1675078
+// Server-rendered per-broker page.
 //
-// SEO strategy:
-//   - Verified-claimed brokers     → fully indexed; full bio + specialties + claim disclosure
-//   - Unclaimed brokers (FMCSA only) → page still works, but `noindex` so Google doesn't
-//     get 24,992 thin pages of FMCSA data already on FMCSA.gov
-//   - Unknown MC                    → 404
+// URL handling — every shape resolves to the same canonical slug:
+//   /brokers/MC-1675078                       → 301 → /brokers/gmf-auto-transport-mc-1675078
+//   /brokers/1675078                          → 301 → /brokers/gmf-auto-transport-mc-1675078
+//   /brokers/uship-concierge-llc-mc-973139    → 301 → /brokers/uship-mc-973139  (legal-name URL → brand canonical)
+//   /brokers/uship-mc-973139                  → 200 (canonical, rendered)
 //
-// All data is fetched server-side: live FMCSA + Socrata via our normalize pipeline,
-// claim from broker_claims. Page is SEO-friendly out of the box (no client fetch needed).
+// SEO indexing strategy:
+//   - In NOTABLE_BROKERS list (curated brand-search targets)   → indexable
+//   - Has a verified claim (broker-supplied bio / specialties) → indexable
+//   - Otherwise (long-tail unclaimed)                          → noindex
+//
+// All data fetched server-side: live FMCSA + Socrata + claim + internal flags.
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect, permanentRedirect } from "next/navigation";
 import { lookupCarrier } from "@/lib/fmcsa/qcmobile";
 import { fetchActiveFilings } from "@/lib/fmcsa/socrata";
 import { normalizeFmcsaBroker } from "@/lib/fmcsa/normalize";
 import { sql, readClaim, readInternalFlags } from "@/lib/db";
 import { BROKER as VAB_BROKER } from "@/lib/broker-info";
-import { buildMetadata, brokerUrl } from "@/lib/seo";
-
-// Strip "MC-" / "MC" prefix and leading zeros so "/brokers/MC-1675078",
-// "/brokers/MC1675078", and "/brokers/1675078" all resolve to the same record.
-function canonMc(raw: string): string | null {
-  if (!raw) return null;
-  const digits = String(raw).replace(/^MC-?/i, "").replace(/[^\d]/g, "");
-  return digits || null;
-}
+import { buildMetadata } from "@/lib/seo";
+import {
+  buildBrokerSlug,
+  canonicalNameForBroker,
+  extractMcFromSlug,
+  getNotableName,
+  isIndexable as isNotable,
+} from "@/lib/notable-brokers";
 
 async function loadBroker(mc: string) {
   if (!sql) return null;
-  // Confirm the broker exists in our bulk registry — gates the page so randoms
-  // can't fabricate URLs that hammer FMCSA.
   const rows = await sql`
     SELECT mc, dot, legal_name, dba_name, address, city, state, zip, phone,
            broker_stat, bond_on_file
@@ -40,38 +41,63 @@ async function loadBroker(mc: string) {
   return rows[0] ?? null;
 }
 
+// Resolve URL → broker row + canonical slug. Caller decides what to do (render,
+// redirect, 404).
+async function resolveSlug(slugOrMc: string) {
+  const mc = extractMcFromSlug(slugOrMc);
+  if (!mc) return { found: false as const };
+  const row = await loadBroker(mc);
+  if (!row) return { found: false as const };
+  const canonicalSlug = buildBrokerSlug({
+    mc: row.mc,
+    legal_name: row.legal_name,
+    dba_name: row.dba_name,
+  });
+  return { found: true as const, mc: row.mc, row, canonicalSlug };
+}
+
 // ── metadata ──────────────────────────────────────────────────────────────
 export async function generateMetadata({ params }: { params: { mc: string } }) {
-  const mc = canonMc(params.mc);
-  if (!mc) return { title: "Broker not found" };
+  const resolved = await resolveSlug(params.mc);
+  if (!resolved.found) {
+    return { title: "Broker not found", robots: { index: false, follow: false } };
+  }
 
-  const row = await loadBroker(mc);
-  if (!row) return { title: "Broker not found", robots: { index: false, follow: false } };
-
+  const { mc, row } = resolved;
   const claim = await readClaim({ mc });
-  const verified = claim?.status === "verified";
-  const name = row.legal_name || row.dba_name || `MC-${mc}`;
+  const claimed = claim?.status === "verified";
+  const indexable = claimed || isNotable(mc);
+
+  const canonical = canonicalNameForBroker({
+    mc: row.mc,
+    legal_name: row.legal_name,
+    dba_name: row.dba_name,
+  });
   const cityState = [row.city, row.state].filter(Boolean).join(", ");
 
   return buildMetadata({
-    title: `${name} (MC-${mc}) — Auto Transport Broker · Verified Auto Brokers`,
-    description: verified && claim?.bio
-      ? `${name} — ${claim.bio.slice(0, 160)}`
-      : `${name} is a licensed FMCSA auto-transport broker (MC-${mc}, DOT-${row.dot}) based in ${cityState}. Authority status: ${row.broker_stat === "A" ? "Active" : "Inactive"}. Bond on file: ${row.bond_on_file === "Y" ? "Yes" : "No"}.`,
-    path: `/brokers/MC-${mc}`,
-    noIndex: !verified, // unclaimed brokers stay out of the index
+    title: `${canonical} (MC-${mc}) — FMCSA Verified Profile · Verified Auto Brokers`,
+    description: claimed && claim?.bio
+      ? `${canonical} (MC-${mc}) — ${claim.bio.slice(0, 150)}`
+      : `Check ${canonical} (MC-${mc}, DOT-${row.dot}) — FMCSA broker authority status, $75K BMC-84 bond on file, and what people search about ${canonical} reviews and complaints. Independent registry.`,
+    path: `/brokers/${resolved.canonicalSlug}`,
+    noIndex: !indexable,
   });
 }
 
 export default async function BrokerPage({ params }: { params: { mc: string } }) {
-  const mc = canonMc(params.mc);
-  if (!mc) notFound();
+  const resolved = await resolveSlug(params.mc);
+  if (!resolved.found) notFound();
 
-  const row = await loadBroker(mc);
-  if (!row) notFound();
+  const { mc, row, canonicalSlug } = resolved;
 
-  // Fan out: live FMCSA carrier + active insurance filings + claim + internal flags.
-  // Each is wrapped so a single upstream failure doesn't take the whole page down.
+  // Canonical-URL enforcement: any incoming URL that doesn't already match the
+  // canonical slug 301-redirects there. Critical for SEO consolidation.
+  if (decodeURIComponent(params.mc) !== canonicalSlug) {
+    permanentRedirect(`/brokers/${canonicalSlug}`);
+  }
+
+  // Fan out: live FMCSA + Socrata + claim + flags. Each call falls back gracefully.
   const [carrierResult, filingsResult, claim, flags] = await Promise.all([
     lookupCarrier({ mc, dot: row.dot }).catch(() => ({ carrier: null, authority: [] })),
     fetchActiveFilings({ mc, dot: row.dot }).catch(() => []),
@@ -79,14 +105,21 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
     readInternalFlags({ mc, dot: row.dot }).catch(() => []),
   ]);
 
-  // Normalize live data into our broker shape; fall back to the bulk-row info
-  // if FMCSA lookup failed.
   const normalized = carrierResult?.carrier
     ? normalizeFmcsaBroker(carrierResult, filingsResult, flags, { mc, dot: row.dot })
     : null;
 
+  const canonicalName = canonicalNameForBroker({
+    mc: row.mc,
+    legal_name: row.legal_name,
+    dba_name: row.dba_name,
+  });
+  const isClaimed = claim?.status === "verified";
+  const isOperator = claim?.affiliation === "operator";
+
   const display = {
-    name: normalized?.name || row.legal_name || row.dba_name || `MC-${mc}`,
+    name: canonicalName,                                     // brand name (notable list / DBA / legal)
+    legal_name: normalized?.name || row.legal_name,          // FMCSA legal — show in trust section
     dba: normalized?.dba ?? row.dba_name,
     city: normalized?.city || row.city,
     state: normalized?.state || row.state,
@@ -102,15 +135,22 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
     fleet_partners: claim?.carrier_network_size ?? null,
     years: claim?.years_in_business ?? null,
     flagged: normalized?.flagged ?? row.broker_stat !== "A",
-    flag_reason: normalized?.flag_reason,
   };
 
-  const isClaimed = claim?.status === "verified";
-  const isOperator = claim?.affiliation === "operator";
+  const authActive = display.auth_status === "ACTIVE";
+  const bondActive = display.bond.status === "ACTIVE";
+
+  // Plain-English legitimacy assessment, derived strictly from the data.
+  // No editorial commentary — the FMCSA facts speak for themselves.
+  const legitVerdict =
+    authActive && bondActive ? "yes-active"
+    : authActive && !bondActive ? "partial-no-bond"
+    : !authActive ? "no-inactive"
+    : "unknown";
 
   return (
     <div style={{ background: "var(--paper)", minHeight: "100vh" }}>
-      {/* Top disclosure bar — always carries broker MC/DOT per FMCSA 49 CFR 371 */}
+      {/* Top disclosure bar — 49 CFR 371 compliance */}
       <div style={{
         background: "var(--navy)", color: "var(--paper)",
         fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
@@ -131,7 +171,6 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
           color: "var(--paper)", padding: "10px 22px",
           fontFamily: "'JetBrains Mono'", fontSize: 10.5,
           letterSpacing: "0.16em", textTransform: "uppercase",
-          marginBottom: 0,
         }}>
           <span>FILE · MC-{mc} / DOT-{row.dot}</span>
           <span>FMCSA · AUTH {display.auth_status}</span>
@@ -142,7 +181,6 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
           border: "1.5px solid var(--ink)", borderTop: "none",
           background: "var(--paper)",
         }}>
-          {/* Eyebrow */}
           <div style={{
             fontFamily: "'JetBrains Mono'", fontSize: 10,
             letterSpacing: "0.18em", textTransform: "uppercase",
@@ -151,7 +189,7 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             Operating Authority · {display.auth_status === "ACTIVE" ? "Active" : display.auth_status}
           </div>
 
-          {/* H1 — broker name */}
+          {/* H1 — brand-search-friendly name */}
           <h1 style={{
             fontFamily: "'Instrument Serif', serif",
             fontSize: "clamp(40px, 6vw, 72px)", lineHeight: 1.0,
@@ -165,25 +203,24 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             fontFamily: "'JetBrains Mono'", fontSize: 12, color: "var(--muted)",
             letterSpacing: "0.1em", textTransform: "uppercase",
           }}>
-            {display.dba && display.dba !== display.name ? `d/b/a ${display.dba} · ` : ""}
-            {[display.city, display.state].filter(Boolean).join(", ") || "—"}
+            Legal: {display.legal_name}
+            {display.legal_name !== display.name && display.dba && display.dba !== display.legal_name ? ` · d/b/a ${display.dba}` : ""}
+            {" · "}{[display.city, display.state].filter(Boolean).join(", ") || "—"}
           </div>
 
-          {/* Status stamps */}
           <div style={{ display: "flex", gap: 10, marginTop: 18, alignItems: "center", flexWrap: "wrap" }}>
             <Stamp tone={display.flagged ? "flagged" : "verified"}>
               {display.flagged ? "⚠ FLAGGED" : "✓ FMCSA VERIFIED"}
             </Stamp>
-            {display.bond.status === "ACTIVE" && (
+            {bondActive && (
               <Stamp tone="verified">
                 BOND ACTIVE{display.bond.amount ? ` · $${display.bond.amount.toLocaleString()}` : ""}
               </Stamp>
             )}
-            {display.bond.status === "LAPSED" && <Stamp tone="flagged">BOND LAPSED</Stamp>}
+            {!bondActive && display.bond.status === "LAPSED" && <Stamp tone="flagged">BOND LAPSED</Stamp>}
             {isClaimed && <Stamp tone="verified">◆ CLAIMED</Stamp>}
           </div>
 
-          {/* Operator-affiliation disclosure (FTC 16 CFR Part 255) */}
           {isOperator && (
             <div style={{
               marginTop: 14, padding: "10px 14px",
@@ -195,7 +232,6 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             </div>
           )}
 
-          {/* Unclaimed CTA */}
           {!isClaimed && row.broker_stat === "A" && (
             <div style={{ marginTop: 16 }}>
               <Link
@@ -212,9 +248,117 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
           )}
         </div>
 
-        {/* Body grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 36, marginTop: 32 }}>
-          {/* Left: synopsis + specialties */}
+        {/* ── "Is [Name] Legit?" section ────────────────────────────────── */}
+        <section style={{ marginTop: 40 }}>
+          <h2 style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontSize: "clamp(28px, 3.5vw, 40px)", lineHeight: 1.1,
+            margin: "0 0 18px", fontWeight: 400, letterSpacing: "-0.015em",
+          }}>
+            Is {display.name} legit?
+          </h2>
+
+          <div style={{
+            padding: "20px 24px",
+            border: "1.5px solid var(--ink)",
+            background: legitVerdict === "yes-active" ? "var(--paper)" : "var(--red-tint)",
+          }}>
+            <p style={{
+              fontFamily: "'Inter Tight'", fontSize: 17, lineHeight: 1.55,
+              margin: "0 0 14px", color: "var(--ink)",
+            }}>
+              {legitVerdict === "yes-active" && (
+                <>
+                  <strong>Short answer: Yes — based on FMCSA public records.</strong>{" "}
+                  {display.name} (MC-{mc}, DOT-{row.dot}) currently holds <strong>active broker authority</strong> with the FMCSA, has a <strong>${display.bond.amount?.toLocaleString() || "75,000"} BMC-84 surety bond on file</strong>{display.bond.provider ? ` with ${display.bond.provider}` : ""}, and operates as a licensed property broker — not a motor carrier.
+                </>
+              )}
+              {legitVerdict === "partial-no-bond" && (
+                <>
+                  <strong>Caution.</strong> {display.name} (MC-{mc}) has active broker authority but the FMCSA public record shows <strong>no surety bond on file right now</strong>. A $75,000 BMC-84 bond is required by federal law for property brokers (49 CFR 387.307). Verify the bond directly on FMCSA SAFER before booking.
+                </>
+              )}
+              {legitVerdict === "no-inactive" && (
+                <>
+                  <strong>Do not use.</strong> {display.name} (MC-{mc}) does <strong>not currently hold active FMCSA broker authority</strong>. Status: {display.auth_status}. They are not legally permitted to broker auto-transport shipments.
+                </>
+              )}
+              {legitVerdict === "unknown" && (
+                <>
+                  We couldn&apos;t fully verify {display.name} (MC-{mc}) against the FMCSA public record at the moment. Check directly on FMCSA SAFER below.
+                </>
+              )}
+            </p>
+
+            <ul style={{ fontFamily: "'Inter Tight'", fontSize: 14.5, lineHeight: 1.7, paddingLeft: 22, margin: 0, color: "var(--ink)" }}>
+              <li><strong>FMCSA broker authority:</strong> {display.auth_status === "ACTIVE" ? "Active" : display.auth_status}</li>
+              <li><strong>Bond on file:</strong> {bondActive ? `Yes — $${(display.bond.amount || 75000).toLocaleString()} BMC-84${display.bond.provider ? ` via ${display.bond.provider}` : ""}` : "No"}</li>
+              <li><strong>Broker vs carrier:</strong> Property broker (arranges transport via FMCSA-authorized carriers — does not operate trucks)</li>
+              <li><strong>HQ on FMCSA record:</strong> {[display.city, display.state].filter(Boolean).join(", ") || "—"}</li>
+            </ul>
+
+            <div style={{ marginTop: 14 }}>
+              <a
+                href="https://safer.fmcsa.dot.gov/CompanySnapshot.aspx"
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  fontFamily: "'JetBrains Mono'", fontSize: 11,
+                  letterSpacing: "0.14em", textTransform: "uppercase",
+                  color: "var(--navy)", borderBottom: "1px dotted var(--navy)",
+                  textDecoration: "none",
+                }}
+              >Verify independently on FMCSA SAFER ↗</a>
+            </div>
+          </div>
+        </section>
+
+        {/* ── "What People Search About [Name]" section ─────────────────── */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontSize: "clamp(28px, 3.5vw, 40px)", lineHeight: 1.1,
+            margin: "0 0 18px", fontWeight: 400, letterSpacing: "-0.015em",
+          }}>
+            What people search about {display.name}
+          </h2>
+          <div>
+            {[
+              {
+                q: `${display.name} reviews`,
+                a: `We do not aggregate third-party reviews. ${display.name} (MC-${mc}) has ${authActive ? "active" : display.auth_status.toLowerCase()} FMCSA broker authority and ${bondActive ? "a current BMC-84 surety bond" : "no current bond"} on file. For real customer experiences, check independent review sites like the BBB, Google Reviews, or Transport Reviews — not paid review aggregators.`,
+              },
+              {
+                q: `${display.name} complaints`,
+                a: `Complaints filed with the FMCSA appear in their public Safety Measurement System (SMS) profile. We surface authority and bond status here; for the full complaint and inspection history, look up DOT-${row.dot} on FMCSA SAFER.`,
+              },
+              {
+                q: `Is ${display.name} legit?`,
+                a: legitVerdict === "yes-active"
+                  ? `Yes — they are FMCSA-licensed and bonded. See the legitimacy summary above.`
+                  : `${legitVerdict === "no-inactive" ? `No — their FMCSA broker authority is currently ${display.auth_status.toLowerCase()}.` : `Caution warranted — see the summary above for current FMCSA status.`}`,
+              },
+              {
+                q: `${display.name} MC number`,
+                a: `MC-${mc} (DOT-${row.dot}). ${display.legal_name && display.legal_name !== display.name ? `The legal entity on the FMCSA filing is ${display.legal_name}.` : ""}`,
+              },
+            ].map((qa, i) => (
+              <details key={i} style={{
+                padding: "16px 18px", border: "1px solid var(--rule)", marginBottom: 10,
+                background: "var(--paper)",
+              }}>
+                <summary style={{ cursor: "pointer", fontFamily: "'Inter Tight'", fontSize: 16, fontWeight: 600 }}>
+                  {qa.q}
+                </summary>
+                <p style={{ fontFamily: "'Inter Tight'", fontSize: 14.5, lineHeight: 1.6, color: "var(--ink)", marginTop: 10, marginBottom: 0 }}>
+                  {qa.a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Body grid: bio/specialties + public record sidebar ────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 36, marginTop: 48 }}>
           <div>
             <Eyebrow>Synopsis</Eyebrow>
             {display.bio ? (
@@ -264,9 +408,6 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
               </div>
             )}
 
-            {/* Get a quote CTA — funnels into the route landing page if route is well-known,
-                otherwise goes to a generic intake. We just send to /claim for now since
-                the public quote flow isn't wired to CRM yet. */}
             {isClaimed && display.phone && (
               <div style={{ marginTop: 32, padding: "20px 22px", border: "1.5px solid var(--ink)", background: "var(--paper-deep)" }}>
                 <Eyebrow>Contact this broker</Eyebrow>
@@ -287,7 +428,6 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
             )}
           </div>
 
-          {/* Right: hard data */}
           <aside>
             <Eyebrow>Public record</Eyebrow>
             <DataRow label="MC Docket" value={`MC-${mc}`} />
@@ -315,26 +455,46 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
                 <DataRow label="Status" value="ACTIVE" />
               </div>
             )}
-
-            {/* Verify-on-FMCSA link — independent third-party check */}
-            <div style={{ marginTop: 24 }}>
-              <a
-                href="https://safer.fmcsa.dot.gov/CompanySnapshot.aspx"
-                target="_blank" rel="noopener noreferrer"
-                style={{
-                  display: "inline-block",
-                  fontFamily: "'JetBrains Mono'", fontSize: 10.5,
-                  letterSpacing: "0.14em", textTransform: "uppercase",
-                  color: "var(--navy)", borderBottom: "1px dotted var(--navy)",
-                  textDecoration: "none",
-                }}
-              >Verify on FMCSA SAFER ↗</a>
-            </div>
           </aside>
         </div>
+
+        {/* ── Conversion CTA — every broker page ends here ──────────────── */}
+        <section style={{
+          marginTop: 64, padding: "40px 32px",
+          border: "1.5px solid var(--ink)", background: "var(--paper-deep)",
+          textAlign: "center",
+        }}>
+          <h2 style={{
+            fontFamily: "'Instrument Serif'", fontSize: "clamp(28px, 3.5vw, 40px)",
+            lineHeight: 1.1, margin: "0 0 12px", fontWeight: 400, letterSpacing: "-0.015em",
+          }}>
+            Not sure about this broker?
+          </h2>
+          <p style={{ fontFamily: "'Inter Tight'", fontSize: 16, lineHeight: 1.55, color: "var(--ink)", maxWidth: 540, margin: "0 auto 22px" }}>
+            Check another company instantly, or get a verified quote from a broker we operate ourselves.
+          </p>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/" style={{
+              background: "var(--ink)", color: "var(--paper)",
+              padding: "14px 22px", fontFamily: "'Inter Tight'", fontSize: 14,
+              fontWeight: 600, textDecoration: "none",
+            }}>Check another broker →</Link>
+            <Link href={`/brokers/${buildBrokerSlug({ mc: VAB_BROKER.mc, legal_name: VAB_BROKER.legal_name, dba_name: VAB_BROKER.dba_name })}`} style={{
+              background: "transparent", color: "var(--ink)",
+              border: "1.5px solid var(--ink)",
+              padding: "14px 22px", fontFamily: "'Inter Tight'", fontSize: 14,
+              fontWeight: 600, textDecoration: "none",
+            }}>Get a verified quote →</Link>
+          </div>
+          <div style={{
+            fontFamily: "'JetBrains Mono'", fontSize: 9, color: "var(--muted)",
+            letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 14,
+          }}>
+            ⚠ Get-quote button routes to GMF Auto Transport — operated by Verified Auto Brokers · Disclosed per FTC 16 CFR Part 255
+          </div>
+        </section>
       </main>
 
-      {/* Footer with VAB broker disclosure */}
       <footer style={{ background: "var(--ink)", color: "var(--paper)", padding: "32px 24px" }}>
         <div style={{
           maxWidth: 1100, margin: "0 auto",
@@ -353,7 +513,7 @@ export default async function BrokerPage({ params }: { params: { mc: string } })
   );
 }
 
-// ── Inline micro-components (avoid re-importing the SPA's ones) ───────────
+// ── Inline micro-components ───────────────────────────────────────────────
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
